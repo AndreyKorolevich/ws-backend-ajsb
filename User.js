@@ -53,6 +53,25 @@ class User {
         const users = await User.getAll();
         return users.find(elem => elem.name.toLowerCase() === name.toLowerCase())
     }
+
+    static async deleteUser(name){
+        let tikets = await User.getAll();
+        tikets = tikets.filter(elem => elem.name !== name);
+
+        return  new Promise((resolve, reject) =>{
+            fs.writeFile(
+                path.join(__dirname, 'public', 'db.json'),
+                JSON.stringify(tikets),
+                err => {
+                    if(err){
+                        reject(err)
+                    }else{
+                        resolve()
+                    }
+                }
+            )
+        })
+    }
 }
 
 module.exports = User;

@@ -39,40 +39,57 @@ app.use(async (ctx, next) => {
 });
 
 const router = new Router();
-
-router.get('/index', async (ctx) => {
-  ctx.response.body = 'hello';
-});
-
-app.use(router.routes()).use(router.allowedMethods());
-
-const port = process.env.PORT || 7080;
-const server = http.createServer(app.callback())
+const server = http.createServer(app.callback());
 const wsServer = new WS.Server({ server });
+let delUser;
 
 wsServer.on('connection', (ws, req) => {
+
   ws.on('message', async (msg) => {
     const message = JSON.parse(msg);
-
-    if(message.type === 'name') {
-      const user = await User.getByName(message.nick);
-      if(!user) {
-        const newUser = new User(message.nick);
+    if (message.type === 'addUser') {
+      const user = await User.getByName(message.user);
+      if (!user) {
+        const newUser = new User(message.user);
         await newUser.save();
-        ws.send(msg);
+        const users = await User.getAll();
+        [...wsServer.clients]
+          .filter(elem => elem.readyState === WS.OPEN)
+          .forEach(elem => elem.send(JSON.stringify({ type: 'allUsers', data: users })));
         return
       }
-      ws.send(JSON.stringify({type:'error', text: 'There`s already such a user name'}));
+      ws.send(JSON.stringify({ type: 'error', text: 'There`s already such a user name' }));
       return
+    } else if (message.type === 'deleteUser') {
+      delUser = message.user;
+      await User.deleteUser(delUser);
+      const users = await User.getAll();
+      [...wsServer.clients]
+        .filter(elem => elem.readyState === WS.OPEN)
+        .forEach(elem => elem.send(JSON.stringify({ type: 'allUsers', data: users })));
+
+    } else if (message.type === 'addMessage') {
+      [...wsServer.clients]
+        .filter(elem => elem.readyState === WS.OPEN)
+        .forEach(elem => elem.send(JSON.stringify({ type: 'addMessage', data: message })));
     }
-     
-    // ws.send('response');
-    [...wsServer.clients]
-    .filter(elem => elem.readyState === WS.OPEN)
-    .forEach(elem => elem.send(msg));
   });
 
-  ws.send(JSON.stringify({type:'response', text: [...wsServer.clients].length}));
+  ws.on("close", () => {
+    console.log("closed chat");
+    [...wsServer.clients]
+      .filter(elem => elem.readyState === WS.OPEN)
+      .forEach(elem => elem.send(JSON.stringify({ type: 'disconnect', data: `${delUser} disconnected` })));
+    ws.close();
+  });
+
+
+  [...wsServer.clients]
+    .filter(elem => elem.readyState === WS.OPEN)
+    .forEach(elem => elem.send(JSON.stringify({ type: 'connect', data: "new user connected" })));
 });
 
+
+app.use(router.routes()).use(router.allowedMethods());
+const port = process.env.PORT || 7090;
 server.listen(port);
